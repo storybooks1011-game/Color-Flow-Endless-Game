@@ -324,6 +324,11 @@
         }
     }
 
+    function getViewSize() {
+        const dpr = window.devicePixelRatio || 1;
+        return { w: canvas.width / dpr, h: canvas.height / dpr, dpr };
+    }
+
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
         const rect = canvas.getBoundingClientRect();
@@ -332,11 +337,22 @@
         const w = rect.width > 0 ? rect.width : (window.innerWidth > 0 ? window.innerWidth : 360);
         const h = rect.height > 0 ? rect.height : (window.innerHeight > 0 ? window.innerHeight : 640);
         
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        ctx.scale(dpr, dpr);
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+
+        // Reset any transforms and apply the DPR scale exactly once
+        if (ctx.setTransform) {
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        } else {
+            // fallback
+            ctx.scale(dpr, dpr);
+        }
     }
     window.addEventListener('resize', resizeCanvas);
+    // make sure we resize when entering/leaving fullscreen
+    document.addEventListener('fullscreenchange', resizeCanvas);
+    document.addEventListener('webkitfullscreenchange', resizeCanvas);
+    document.addEventListener('mozfullscreenchange', resizeCanvas);
     resizeCanvas();
 
     function initPath() {
@@ -348,16 +364,17 @@
 
     function advancePath() {
         const activeSegment = pathSegments[0];
+        const { w, h } = getViewSize();
         if (activeSegment && activeSegment.item) {
             if (activeSegment.item === 'gem') {
                 state.score += 50 * state.combo;
                 SoundSynth.play('gem');
-                spawnParticles(canvas.width / (window.devicePixelRatio || 1) / 2, canvas.height / (window.devicePixelRatio || 1) * 0.65, '#fffb00');
+                spawnParticles(w / 2, h * 0.65, '#fffb00');
             } else {
                 state.activePowerup = activeSegment.item;
                 state.powerupTime = 5.0;
                 SoundSynth.play('powerup');
-                spawnParticles(canvas.width / (window.devicePixelRatio || 1) / 2, canvas.height / (window.devicePixelRatio || 1) * 0.65, '#00f3ff');
+                spawnParticles(w / 2, h * 0.65, '#00f3ff');
             }
         }
 
@@ -414,7 +431,8 @@
                 state.comboTracker = 0;
             }
             SoundSynth.play('success');
-            spawnParticles(canvas.width / (window.devicePixelRatio || 1) / 2, canvas.height / (window.devicePixelRatio || 1) * 0.65, active.color);
+            const { w, h } = getViewSize();
+            spawnParticles(w / 2, h * 0.65, active.color);
             advancePath();
         } else {
             triggerFailure();
@@ -435,8 +453,8 @@
         state.comboTracker = 0;
         SoundSynth.play('fail');
         
-        const dpr = window.devicePixelRatio || 1;
-        spawnParticles(canvas.width / dpr / 2, canvas.height / dpr * 0.65, '#ff007f');
+        const { w, h } = getViewSize();
+        spawnParticles(w / 2, h * 0.65, '#ff007f');
 
         if (state.lives <= 0) {
             endGame();
@@ -449,11 +467,17 @@
     canvas.addEventListener('mousedown', e => handleInputStart(e.clientX, e.clientY));
     canvas.addEventListener('mouseup', e => handleInputEnd(e.clientX, e.clientY));
     canvas.addEventListener('touchstart', e => {
-        if(e.touches.length > 0) handleInputStart(e.touches[0].clientX, e.touches[0].clientY);
-    }, {passive: true});
+        if(e.touches.length > 0) {
+            e.preventDefault();
+            handleInputStart(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }, {passive: false});
     canvas.addEventListener('touchend', e => {
-        if(e.changedTouches.length > 0) handleInputEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-    }, {passive: true});
+        if(e.changedTouches.length > 0) {
+            e.preventDefault();
+            handleInputEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        }
+    }, {passive: false});
 
     window.addEventListener('keydown', e => {
         if (!state.isPlaying || state.isPaused) return;
@@ -528,6 +552,7 @@
             localStorage.setItem('cf_highscore', state.highScore);
         }
         document.getElementById('final-score-display').innerText = `SCORE: ${state.score}`;
+        updateHUD();
         uiGameOver.classList.remove('hidden');
     }
 
@@ -606,9 +631,7 @@
         if (dt > 100 || dt <= 0) dt = 16.67; 
         lastTime = timestamp;
 
-        const dpr = window.devicePixelRatio || 1;
-        const viewW = canvas.width / dpr;
-        const viewH = canvas.height / dpr;
+        const { w: viewW, h: viewH, dpr } = getViewSize();
 
         ctx.clearRect(0, 0, viewW, viewH);
 
@@ -701,4 +724,3 @@
 
 </body>
 </html>
-
